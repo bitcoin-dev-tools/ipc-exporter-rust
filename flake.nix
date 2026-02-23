@@ -3,39 +3,87 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
-    { nixpkgs, ... }:
+    {
+      self,
+      nixpkgs,
+      rust-overlay,
+      crane,
+      ...
+    }:
     let
       systems = [
         "x86_64-linux"
         "aarch64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
-      pkgsFor = system: nixpkgs.legacyPackages.${system};
+
+      mkPkgs =
+        system:
+        import nixpkgs {
+          inherit system;
+          overlays = [ rust-overlay.overlays.default ];
+        };
+
+      mkCraneLib =
+        system:
+        let
+          pkgs = mkPkgs system;
+          rust = pkgs.rust-bin.stable.latest.default;
+        in
+        (crane.mkLib pkgs).overrideToolchain rust;
     in
     {
-      packages = forAllSystems (system: {
-        default = (pkgsFor system).rustPlatform.buildRustPackage {
-          pname = "ipc-exporter-rust";
-          version = "0.1.0";
-          src = ./.;
-          cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = [ (pkgsFor system).capnproto ];
-        };
-      });
+      packages = forAllSystems (
+        system:
+        let
+          pkgs = mkPkgs system;
+          craneLib = mkCraneLib system;
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter =
+              path: type:
+              (builtins.match ".*\\.capnp$" path != null) || (craneLib.filterCargoSources path type);
+          };
+          commonArgs = {
+            inherit src;
+            pname = "ipc-exporter-rust";
+            version = "0.1.0";
+            nativeBuildInputs = [ pkgs.capnproto ];
+          };
+          cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        in
+        {
+          default = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
+        }
+      );
 
-      devShells = forAllSystems (system: {
-        default = (pkgsFor system).mkShell {
-          packages = with (pkgsFor system); [
-            cargo
-            rustc
-            rustfmt
-            clippy
-            capnproto
-          ];
-        };
-      });
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = mkPkgs system;
+          rust = pkgs.rust-bin.stable.latest.default.override {
+            extensions = [
+              "rust-src"
+              "rust-analyzer"
+            ];
+          };
+        in
+        {
+          default = pkgs.mkShell {
+            buildInputs = [
+              rust
+              pkgs.capnproto
+            ];
+          };
+        }
+      );
     };
 }
