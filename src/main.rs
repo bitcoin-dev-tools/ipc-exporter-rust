@@ -357,52 +357,70 @@ async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::E
     eprintln!("chain height: {height}, IBD: {ibd}");
 
     let metrics = Metrics::new();
-    let _subscription = rpc
+    let subscription = rpc
         .register_notifications(NotificationHandler {
             metrics: metrics.clone(),
         })
         .await?;
     eprintln!("registered for chain notifications, waiting for events...");
 
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let ctrl_c = tokio::signal::ctrl_c();
+    tokio::pin!(ctrl_c);
+
     loop {
-        tokio::time::sleep(Duration::from_secs(60)).await;
-        let h = rpc.get_height().await?;
-        let ibd = rpc.is_ibd().await?;
-        let progress = rpc.get_verification_progress().await?;
-        let mempool_size = rpc.get_mempool_size().await?;
-        let mempool_bytes = rpc.get_mempool_dynamic_usage().await?;
-        let mempool_max = rpc.get_mempool_max_usage().await?;
-        let peers = rpc.get_node_count().await?;
-        let bytes_recv = rpc.get_total_bytes_recv().await?;
-        let bytes_sent = rpc.get_total_bytes_sent().await?;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(60)) => {
+                let h = rpc.get_height().await?;
+                let ibd = rpc.is_ibd().await?;
+                let progress = rpc.get_verification_progress().await?;
+                let mempool_size = rpc.get_mempool_size().await?;
+                let mempool_bytes = rpc.get_mempool_dynamic_usage().await?;
+                let mempool_max = rpc.get_mempool_max_usage().await?;
+                let peers = rpc.get_node_count().await?;
+                let bytes_recv = rpc.get_total_bytes_recv().await?;
+                let bytes_sent = rpc.get_total_bytes_sent().await?;
 
-        eprintln!("--- poll ---");
-        eprintln!("  chain_height={h} ibd={ibd} verification_progress={progress:.6}");
-        eprintln!("  block_height={}", metrics.block_height.load(Relaxed));
-        eprintln!("  mempool_size={mempool_size} mempool_bytes={mempool_bytes} mempool_max={mempool_max}");
-        eprintln!("  peers={peers} bytes_recv={bytes_recv} bytes_sent={bytes_sent}");
-        eprintln!(
-            "  blocks_connected={} blocks_disconnected={}",
-            metrics.blocks_connected.load(Relaxed),
-            metrics.blocks_disconnected.load(Relaxed)
-        );
-        eprintln!(
-            "  mempool_tx_added={} mempool_tx_removed={}",
-            metrics.mempool_tx_added.load(Relaxed),
-            metrics.mempool_tx_removed.load(Relaxed)
-        );
-        eprintln!(
-            "  tip_updates={} chain_state_flushes={}",
-            metrics.tip_updates.load(Relaxed),
-            metrics.chain_state_flushes.load(Relaxed)
-        );
+                eprintln!("--- poll ---");
+                eprintln!("  chain_height={h} ibd={ibd} verification_progress={progress:.6}");
+                eprintln!("  block_height={}", metrics.block_height.load(Relaxed));
+                eprintln!("  mempool_size={mempool_size} mempool_bytes={mempool_bytes} mempool_max={mempool_max}");
+                eprintln!("  peers={peers} bytes_recv={bytes_recv} bytes_sent={bytes_sent}");
+                eprintln!(
+                    "  blocks_connected={} blocks_disconnected={}",
+                    metrics.blocks_connected.load(Relaxed),
+                    metrics.blocks_disconnected.load(Relaxed)
+                );
+                eprintln!(
+                    "  mempool_tx_added={} mempool_tx_removed={}",
+                    metrics.mempool_tx_added.load(Relaxed),
+                    metrics.mempool_tx_removed.load(Relaxed)
+                );
+                eprintln!(
+                    "  tip_updates={} chain_state_flushes={}",
+                    metrics.tip_updates.load(Relaxed),
+                    metrics.chain_state_flushes.load(Relaxed)
+                );
+            }
+            _ = &mut ctrl_c => {
+                eprintln!("received SIGINT, shutting down...");
+                break;
+            }
+            _ = sigterm.recv() => {
+                eprintln!("received SIGTERM, shutting down...");
+                break;
+            }
+        }
     }
 
-    #[allow(unreachable_code)]
-    {
-        rpc.disconnect().await?;
-        Ok(())
-    }
+    let mut req = subscription.disconnect_request();
+    req.get().get_context()?.set_thread(rpc.thread.clone());
+    req.send().promise.await?;
+    eprintln!("notifications disconnected");
+
+    rpc.disconnect().await?;
+    eprintln!("RPC disconnected");
+    Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]
