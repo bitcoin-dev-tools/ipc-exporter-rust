@@ -8,11 +8,21 @@ Bitcoin Core must be built with multiprocess support (the `bitcoin-node` binary 
 
 ## Architecture
 
-Single binary (`src/main.rs`, ~570 lines) that does three things concurrently:
+Single binary that does three things concurrently:
 
 1. **IPC subscription** — subscribes to `ChainNotifications` via Cap'n Proto RPC. Callbacks fire in real-time for block/mempool/flush events and update atomic counters.
 2. **Polling loop** — queries `Chain` and `Node` interfaces every 60 seconds for gauges (height, mempool stats, peer count, bandwidth). Initial poll runs at startup.
 3. **HTTP server** — raw `TcpListener` on `127.0.0.1:9332` (configurable) serving Prometheus text format. No HTTP framework — just reads one request and writes the response.
+
+### Source Layout
+
+| File | Responsibility |
+|------|----------------|
+| `src/main.rs` | CLI parsing, signal handling, poll loop, orchestration. Declares capnp generated modules. |
+| `src/rpc.rs` | `RpcInterface` — IPC handshake and all Cap'n Proto RPC query methods. |
+| `src/metrics.rs` | `Metrics` struct (atomic counters/gauges) and `format_metrics()` Prometheus formatter. |
+| `src/server.rs` | `serve_metrics()` — TCP listener serving the Prometheus text endpoint. |
+| `src/notifications.rs` | `NotificationHandler` — `ChainNotifications` callback impl that updates metrics. |
 
 All metrics live in a `Metrics` struct using stdlib atomics (`AtomicU64`, `AtomicI32`, `AtomicBool`, etc.), shared via `Arc`. The `f64` verification_progress is stored as bits in an `AtomicU64`.
 
@@ -129,3 +139,7 @@ The flake exports `nixosModules.default` (defined in `module.nix`). It creates a
 - Reconnect on bitcoind restart (currently the exporter exits; systemd `Restart=on-failure` handles it)
 - Grafana dashboard JSON provisioning
 - Dashboard parity validation against the existing USDT/RPC exporter
+
+## Development Rules
+
+- Keep this CLAUDE.md updated when making structural changes (new modules, changed architecture, new CLI flags, etc.).
