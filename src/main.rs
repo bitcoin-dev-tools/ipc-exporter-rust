@@ -53,6 +53,7 @@ use chain_capnp::chain_notifications::{
 };
 use handler_capnp::handler::Client as HandlerClient;
 use init_capnp::init::Client as InitClient;
+use node_capnp::node::Client as NodeClient;
 use proxy_capnp::thread::Client as ThreadClient;
 
 fn display_hash(bytes: &[u8]) -> String {
@@ -100,6 +101,7 @@ struct RpcInterface {
     disconnector: capnp_rpc::Disconnector<twoparty::VatId>,
     thread: ThreadClient,
     chain: ChainClient,
+    node: NodeClient,
 }
 
 impl RpcInterface {
@@ -128,12 +130,18 @@ impl RpcInterface {
         let response = req.send().promise.await?;
         let chain = response.get()?.get_result()?;
 
+        let mut req = init.make_node_request();
+        req.get().get_context()?.set_thread(thread.clone());
+        let response = req.send().promise.await?;
+        let node = response.get()?.get_result()?;
+
         eprintln!("IPC handshake complete");
         Ok(Self {
             rpc_handle,
             disconnector,
             thread,
             chain,
+            node,
         })
     }
 
@@ -161,6 +169,56 @@ impl RpcInterface {
         req.get().set_notifications(client);
         let response = req.send().promise.await?;
         Ok(response.get()?.get_result()?)
+    }
+
+    async fn get_verification_progress(&self) -> Result<f64, Box<dyn std::error::Error>> {
+        let mut req = self.node.get_verification_progress_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        let response = req.send().promise.await?;
+        Ok(response.get()?.get_result())
+    }
+
+    async fn get_mempool_size(&self) -> Result<u64, Box<dyn std::error::Error>> {
+        let mut req = self.node.get_mempool_size_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        let response = req.send().promise.await?;
+        Ok(response.get()?.get_result())
+    }
+
+    async fn get_mempool_dynamic_usage(&self) -> Result<u64, Box<dyn std::error::Error>> {
+        let mut req = self.node.get_mempool_dynamic_usage_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        let response = req.send().promise.await?;
+        Ok(response.get()?.get_result())
+    }
+
+    async fn get_mempool_max_usage(&self) -> Result<u64, Box<dyn std::error::Error>> {
+        let mut req = self.node.get_mempool_max_usage_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        let response = req.send().promise.await?;
+        Ok(response.get()?.get_result())
+    }
+
+    async fn get_node_count(&self) -> Result<u64, Box<dyn std::error::Error>> {
+        let mut req = self.node.get_node_count_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        req.get().set_flags(3); // CONNECTIONS_ALL = In | Out
+        let response = req.send().promise.await?;
+        Ok(response.get()?.get_result())
+    }
+
+    async fn get_total_bytes_recv(&self) -> Result<i64, Box<dyn std::error::Error>> {
+        let mut req = self.node.get_total_bytes_recv_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        let response = req.send().promise.await?;
+        Ok(response.get()?.get_result())
+    }
+
+    async fn get_total_bytes_sent(&self) -> Result<i64, Box<dyn std::error::Error>> {
+        let mut req = self.node.get_total_bytes_sent_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        let response = req.send().promise.await?;
+        Ok(response.get()?.get_result())
     }
 
     async fn disconnect(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -310,9 +368,19 @@ async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::E
         tokio::time::sleep(Duration::from_secs(60)).await;
         let h = rpc.get_height().await?;
         let ibd = rpc.is_ibd().await?;
+        let progress = rpc.get_verification_progress().await?;
+        let mempool_size = rpc.get_mempool_size().await?;
+        let mempool_bytes = rpc.get_mempool_dynamic_usage().await?;
+        let mempool_max = rpc.get_mempool_max_usage().await?;
+        let peers = rpc.get_node_count().await?;
+        let bytes_recv = rpc.get_total_bytes_recv().await?;
+        let bytes_sent = rpc.get_total_bytes_sent().await?;
+
         eprintln!("--- poll ---");
-        eprintln!("  chain_height={h} ibd={ibd}");
+        eprintln!("  chain_height={h} ibd={ibd} verification_progress={progress:.6}");
         eprintln!("  block_height={}", metrics.block_height.load(Relaxed));
+        eprintln!("  mempool_size={mempool_size} mempool_bytes={mempool_bytes} mempool_max={mempool_max}");
+        eprintln!("  peers={peers} bytes_recv={bytes_recv} bytes_sent={bytes_sent}");
         eprintln!(
             "  blocks_connected={} blocks_disconnected={}",
             metrics.blocks_connected.load(Relaxed),
