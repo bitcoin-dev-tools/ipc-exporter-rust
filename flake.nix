@@ -82,6 +82,11 @@
             preUnpack = "";
             doCheck = false;
             doInstallCheck = false;
+            postInstall =
+              (old.postInstall or "")
+              + ''
+                ln -sf $out/libexec/bitcoin-node $out/bin/bitcoind
+              '';
           });
         }
       );
