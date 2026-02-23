@@ -8,6 +8,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     crane.url = "github:ipetkov/crane";
+    bitcoin-node-src = {
+      url = "github:ryanofsky/bitcoin/pr/ipc";
+      flake = false;
+    };
   };
 
   outputs =
@@ -16,6 +20,7 @@
       nixpkgs,
       rust-overlay,
       crane,
+      bitcoin-node-src,
       ...
     }:
     let
@@ -43,6 +48,10 @@
     {
       nixosModules.default = import ./module.nix;
 
+      overlays.default = final: prev: {
+        bitcoin-node = self.packages.${final.system}.bitcoin-node;
+      };
+
       packages = forAllSystems (
         system:
         let
@@ -63,6 +72,14 @@
         in
         {
           default = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
+          bitcoin-node = pkgs.bitcoind.overrideAttrs (old: {
+            pname = "bitcoin-node";
+            version = "30.99-ipc";
+            src = bitcoin-node-src;
+            preUnpack = "";
+            doCheck = false;
+            doInstallCheck = false;
+          });
         }
       );
 

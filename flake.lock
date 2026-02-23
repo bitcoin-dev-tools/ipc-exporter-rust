@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "bitcoin-node-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1767726200,
+        "narHash": "sha256-EScBMsEp50poyZZ8FAI8D9RLHTDygflEkXagKViCSxw=",
+        "owner": "ryanofsky",
+        "repo": "bitcoin",
+        "rev": "2503f57e93c32158f837e1c9f0dc9f1061b84346",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ryanofsky",
+        "ref": "pr/ipc",
+        "repo": "bitcoin",
+        "type": "github"
+      }
+    },
     "crane": {
       "locked": {
         "lastModified": 1771796463,
@@ -33,6 +50,7 @@
     },
     "root": {
       "inputs": {
+        "bitcoin-node-src": "bitcoin-node-src",
         "crane": "crane",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
