@@ -42,6 +42,7 @@ mod proxy_capnp {
 }
 
 use chain_capnp::chain::Client as ChainClient;
+use handler_capnp::handler::Client as HandlerClient;
 use chain_capnp::chain_notifications::{
     BlockConnectedParams, BlockConnectedResults, BlockDisconnectedParams,
     BlockDisconnectedResults, ChainStateFlushedParams, ChainStateFlushedResults, DestroyParams,

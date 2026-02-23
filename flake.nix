@@ -49,8 +49,7 @@
           src = pkgs.lib.cleanSourceWith {
             src = ./.;
             filter =
-              path: type:
-              (builtins.match ".*\\.capnp$" path != null) || (craneLib.filterCargoSources path type);
+              path: type: (builtins.match ".*\\.capnp$" path != null) || (craneLib.filterCargoSources path type);
           };
           commonArgs = {
             inherit src;
@@ -81,6 +80,7 @@
             buildInputs = [
               rust
               pkgs.capnproto
+              pkgs.just
             ];
           };
         }
