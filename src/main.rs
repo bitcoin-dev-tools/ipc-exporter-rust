@@ -2,6 +2,8 @@ use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use tokio::task::{self, JoinHandle};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+use std::sync::atomic::{AtomicI32, AtomicU64, Ordering::Relaxed};
+use std::sync::Arc;
 use std::{env, time::Duration};
 
 #[allow(dead_code)]
@@ -42,7 +44,6 @@ mod proxy_capnp {
 }
 
 use chain_capnp::chain::Client as ChainClient;
-use handler_capnp::handler::Client as HandlerClient;
 use chain_capnp::chain_notifications::{
     BlockConnectedParams, BlockConnectedResults, BlockDisconnectedParams,
     BlockDisconnectedResults, ChainStateFlushedParams, ChainStateFlushedResults, DestroyParams,
@@ -50,8 +51,49 @@ use chain_capnp::chain_notifications::{
     TransactionRemovedFromMempoolParams, TransactionRemovedFromMempoolResults,
     UpdatedBlockTipParams, UpdatedBlockTipResults,
 };
+use handler_capnp::handler::Client as HandlerClient;
 use init_capnp::init::Client as InitClient;
 use proxy_capnp::thread::Client as ThreadClient;
+
+fn display_hash(bytes: &[u8]) -> String {
+    bytes.iter().rev().map(|b| format!("{b:02x}")).collect()
+}
+
+fn removal_reason(reason: i32) -> &'static str {
+    match reason {
+        0 => "expiry",
+        1 => "sizelimit",
+        2 => "reorg",
+        3 => "block",
+        4 => "conflict",
+        5 => "replaced",
+        _ => "unknown",
+    }
+}
+
+struct Metrics {
+    blocks_connected: AtomicU64,
+    blocks_disconnected: AtomicU64,
+    mempool_tx_added: AtomicU64,
+    mempool_tx_removed: AtomicU64,
+    tip_updates: AtomicU64,
+    chain_state_flushes: AtomicU64,
+    block_height: AtomicI32,
+}
+
+impl Metrics {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            blocks_connected: AtomicU64::new(0),
+            blocks_disconnected: AtomicU64::new(0),
+            mempool_tx_added: AtomicU64::new(0),
+            mempool_tx_removed: AtomicU64::new(0),
+            tip_updates: AtomicU64::new(0),
+            chain_state_flushes: AtomicU64::new(0),
+            block_height: AtomicI32::new(-1),
+        })
+    }
+}
 
 struct RpcInterface {
     rpc_handle: JoinHandle<Result<(), capnp::Error>>,
@@ -128,7 +170,9 @@ impl RpcInterface {
     }
 }
 
-struct NotificationHandler;
+struct NotificationHandler {
+    metrics: Arc<Metrics>,
+}
 
 impl chain_capnp::chain_notifications::Server for NotificationHandler {
     fn destroy(
@@ -142,19 +186,39 @@ impl chain_capnp::chain_notifications::Server for NotificationHandler {
 
     fn transaction_added_to_mempool(
         &mut self,
-        _: TransactionAddedToMempoolParams,
+        params: TransactionAddedToMempoolParams,
         _: TransactionAddedToMempoolResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        eprintln!("notification: tx added to mempool");
+        let total = self.metrics.mempool_tx_added.fetch_add(1, Relaxed) + 1;
+        if let Ok(p) = params.get() {
+            if let Ok(tx_data) = p.get_tx() {
+                let txid = bitcoin::consensus::deserialize::<bitcoin::Transaction>(tx_data)
+                    .map(|tx| tx.compute_txid().to_string())
+                    .unwrap_or_else(|_| "??".into());
+                eprintln!("mempool_add: txid={txid} size={} total={total}", tx_data.len());
+            }
+        }
         capnp::capability::Promise::ok(())
     }
 
     fn transaction_removed_from_mempool(
         &mut self,
-        _: TransactionRemovedFromMempoolParams,
+        params: TransactionRemovedFromMempoolParams,
         _: TransactionRemovedFromMempoolResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        eprintln!("notification: tx removed from mempool");
+        let total = self.metrics.mempool_tx_removed.fetch_add(1, Relaxed) + 1;
+        if let Ok(p) = params.get() {
+            let reason = removal_reason(p.get_reason());
+            if let Ok(tx_data) = p.get_tx() {
+                let txid = bitcoin::consensus::deserialize::<bitcoin::Transaction>(tx_data)
+                    .map(|tx| tx.compute_txid().to_string())
+                    .unwrap_or_else(|_| "??".into());
+                eprintln!(
+                    "mempool_remove: txid={txid} reason={reason} size={} total={total}",
+                    tx_data.len()
+                );
+            }
+        }
         capnp::capability::Promise::ok(())
     }
 
@@ -163,14 +227,22 @@ impl chain_capnp::chain_notifications::Server for NotificationHandler {
         params: BlockConnectedParams,
         _: BlockConnectedResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        let height = match params.get() {
-            Ok(p) => match p.get_block() {
-                Ok(block) => block.get_height(),
-                Err(_) => -1,
-            },
-            Err(_) => -1,
-        };
-        eprintln!("notification: block connected at height {height}");
+        self.metrics.blocks_connected.fetch_add(1, Relaxed);
+        if let Ok(p) = params.get() {
+            if let Ok(block) = p.get_block() {
+                let height = block.get_height();
+                self.metrics.block_height.store(height, Relaxed);
+                let hash = block.get_hash().ok().map(display_hash).unwrap_or_default();
+                let prev = block.get_prev_hash().ok().map(display_hash).unwrap_or_default();
+                let time_max = block.get_chain_time_max();
+                eprintln!("block_connected: height={height} hash={hash} prev={prev} chain_time_max={time_max}");
+            }
+            if let Ok(role) = p.get_role() {
+                if role.get_historical() {
+                    eprintln!("  (historical chainstate)");
+                }
+            }
+        }
         capnp::capability::Promise::ok(())
     }
 
@@ -179,14 +251,14 @@ impl chain_capnp::chain_notifications::Server for NotificationHandler {
         params: BlockDisconnectedParams,
         _: BlockDisconnectedResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        let height = match params.get() {
-            Ok(p) => match p.get_block() {
-                Ok(block) => block.get_height(),
-                Err(_) => -1,
-            },
-            Err(_) => -1,
-        };
-        eprintln!("notification: block disconnected at height {height}");
+        self.metrics.blocks_disconnected.fetch_add(1, Relaxed);
+        if let Ok(p) = params.get() {
+            if let Ok(block) = p.get_block() {
+                let height = block.get_height();
+                let hash = block.get_hash().ok().map(display_hash).unwrap_or_default();
+                eprintln!("block_disconnected: height={height} hash={hash}");
+            }
+        }
         capnp::capability::Promise::ok(())
     }
 
@@ -195,16 +267,26 @@ impl chain_capnp::chain_notifications::Server for NotificationHandler {
         _: UpdatedBlockTipParams,
         _: UpdatedBlockTipResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        eprintln!("notification: block tip updated");
+        self.metrics.tip_updates.fetch_add(1, Relaxed);
+        eprintln!("tip_updated");
         capnp::capability::Promise::ok(())
     }
 
     fn chain_state_flushed(
         &mut self,
-        _: ChainStateFlushedParams,
+        params: ChainStateFlushedParams,
         _: ChainStateFlushedResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        eprintln!("notification: chain state flushed");
+        self.metrics.chain_state_flushes.fetch_add(1, Relaxed);
+        if let Ok(p) = params.get() {
+            let role = p
+                .get_role()
+                .ok()
+                .map(|r| if r.get_historical() { "historical" } else { "validated" })
+                .unwrap_or("unknown");
+            let locator_len = p.get_locator().ok().map(|l| l.len()).unwrap_or(0);
+            eprintln!("chain_state_flushed: role={role} locator_size={locator_len}");
+        }
         capnp::capability::Promise::ok(())
     }
 }
@@ -216,13 +298,36 @@ async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::E
     let ibd = rpc.is_ibd().await?;
     eprintln!("chain height: {height}, IBD: {ibd}");
 
-    let _subscription = rpc.register_notifications(NotificationHandler).await?;
+    let metrics = Metrics::new();
+    let _subscription = rpc
+        .register_notifications(NotificationHandler {
+            metrics: metrics.clone(),
+        })
+        .await?;
     eprintln!("registered for chain notifications, waiting for events...");
 
     loop {
         tokio::time::sleep(Duration::from_secs(60)).await;
         let h = rpc.get_height().await?;
-        eprintln!("poll: chain height {h}");
+        let ibd = rpc.is_ibd().await?;
+        eprintln!("--- poll ---");
+        eprintln!("  chain_height={h} ibd={ibd}");
+        eprintln!("  block_height={}", metrics.block_height.load(Relaxed));
+        eprintln!(
+            "  blocks_connected={} blocks_disconnected={}",
+            metrics.blocks_connected.load(Relaxed),
+            metrics.blocks_disconnected.load(Relaxed)
+        );
+        eprintln!(
+            "  mempool_tx_added={} mempool_tx_removed={}",
+            metrics.mempool_tx_added.load(Relaxed),
+            metrics.mempool_tx_removed.load(Relaxed)
+        );
+        eprintln!(
+            "  tip_updates={} chain_state_flushes={}",
+            metrics.tip_updates.load(Relaxed),
+            metrics.chain_state_flushes.load(Relaxed)
+        );
     }
 
     #[allow(unreachable_code)]

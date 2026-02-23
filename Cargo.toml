@@ -5,6 +5,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
+bitcoin = "0.32"
 capnp = "0.19"
 capnp-rpc = "0.19"
 tokio = { version = "1", features = ["net", "rt", "macros", "time"] }
