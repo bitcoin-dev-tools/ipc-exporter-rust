@@ -78,6 +78,7 @@
             pname = "bitcoin-node";
             version = "30.99-ipc";
             src = bitcoin-node-src;
+            buildInputs = old.buildInputs ++ [ pkgs.libsodium ];
             preUnpack = "";
             doCheck = false;
             doInstallCheck = false;
