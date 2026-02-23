@@ -7,7 +7,7 @@ pub async fn serve_metrics(metrics: Arc<Metrics>, addr: String) {
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .unwrap_or_else(|e| panic!("failed to bind metrics server on {addr}: {e}"));
-    eprintln!("metrics server listening on http://{addr}/metrics");
+    log::info!("metrics server listening on http://{addr}/metrics");
     loop {
         let Ok((mut stream, _)) = listener.accept().await else {
             continue;

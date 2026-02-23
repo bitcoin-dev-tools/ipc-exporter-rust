@@ -8,9 +8,7 @@ use crate::chain_capnp::chain_notifications::{
     TransactionRemovedFromMempoolParams, TransactionRemovedFromMempoolResults,
     UpdatedBlockTipParams, UpdatedBlockTipResults,
 };
-use crate::debug;
 use crate::metrics::Metrics;
-use crate::DEBUG;
 
 fn display_hash(bytes: &[u8]) -> String {
     bytes.iter().rev().map(|b| format!("{b:02x}")).collect()
@@ -38,7 +36,7 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
         _: DestroyParams,
         _: DestroyResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
-        debug!("notification: destroy");
+        log::debug!("notification: destroy");
         capnp::capability::Promise::ok(())
     }
 
@@ -48,13 +46,13 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
         _: TransactionAddedToMempoolResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         self.metrics.mempool_tx_added.fetch_add(1, Relaxed);
-        if DEBUG.load(Relaxed) {
+        if log::log_enabled!(log::Level::Debug) {
             if let Ok(p) = params.get() {
                 if let Ok(tx_data) = p.get_tx() {
                     let txid = bitcoin::consensus::deserialize::<bitcoin::Transaction>(tx_data)
                         .map(|tx| tx.compute_txid().to_string())
                         .unwrap_or_else(|_| "??".into());
-                    eprintln!("mempool_add: txid={txid} size={}", tx_data.len());
+                    log::debug!("mempool_add: txid={txid} size={}", tx_data.len());
                 }
             }
         }
@@ -67,14 +65,14 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
         _: TransactionRemovedFromMempoolResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         self.metrics.mempool_tx_removed.fetch_add(1, Relaxed);
-        if DEBUG.load(Relaxed) {
+        if log::log_enabled!(log::Level::Debug) {
             if let Ok(p) = params.get() {
                 let reason = removal_reason(p.get_reason());
                 if let Ok(tx_data) = p.get_tx() {
                     let txid = bitcoin::consensus::deserialize::<bitcoin::Transaction>(tx_data)
                         .map(|tx| tx.compute_txid().to_string())
                         .unwrap_or_else(|_| "??".into());
-                    eprintln!(
+                    log::debug!(
                         "mempool_remove: txid={txid} reason={reason} size={}",
                         tx_data.len()
                     );
@@ -93,15 +91,15 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
         if let Ok(p) = params.get() {
             if let Ok(block) = p.get_block() {
                 self.metrics.block_height.store(block.get_height(), Relaxed);
-                if DEBUG.load(Relaxed) {
+                if log::log_enabled!(log::Level::Debug) {
                     let height = block.get_height();
                     let hash = block.get_hash().ok().map(display_hash).unwrap_or_default();
                     let prev = block.get_prev_hash().ok().map(display_hash).unwrap_or_default();
                     let time_max = block.get_chain_time_max();
-                    eprintln!("block_connected: height={height} hash={hash} prev={prev} chain_time_max={time_max}");
+                    log::debug!("block_connected: height={height} hash={hash} prev={prev} chain_time_max={time_max}");
                     if let Ok(role) = p.get_role() {
                         if role.get_historical() {
-                            eprintln!("  (historical chainstate)");
+                            log::debug!("  (historical chainstate)");
                         }
                     }
                 }
@@ -116,12 +114,12 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
         _: BlockDisconnectedResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         self.metrics.blocks_disconnected.fetch_add(1, Relaxed);
-        if DEBUG.load(Relaxed) {
+        if log::log_enabled!(log::Level::Debug) {
             if let Ok(p) = params.get() {
                 if let Ok(block) = p.get_block() {
                     let height = block.get_height();
                     let hash = block.get_hash().ok().map(display_hash).unwrap_or_default();
-                    eprintln!("block_disconnected: height={height} hash={hash}");
+                    log::debug!("block_disconnected: height={height} hash={hash}");
                 }
             }
         }
@@ -134,7 +132,7 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
         _: UpdatedBlockTipResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         self.metrics.tip_updates.fetch_add(1, Relaxed);
-        debug!("tip_updated");
+        log::debug!("tip_updated");
         capnp::capability::Promise::ok(())
     }
 
@@ -144,7 +142,7 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
         _: ChainStateFlushedResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         self.metrics.chain_state_flushes.fetch_add(1, Relaxed);
-        if DEBUG.load(Relaxed) {
+        if log::log_enabled!(log::Level::Debug) {
             if let Ok(p) = params.get() {
                 let role = p
                     .get_role()
@@ -152,7 +150,7 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
                     .map(|r| if r.get_historical() { "historical" } else { "validated" })
                     .unwrap_or("unknown");
                 let locator_len = p.get_locator().ok().map(|l| l.len()).unwrap_or(0);
-                eprintln!("chain_state_flushed: role={role} locator_size={locator_len}");
+                log::debug!("chain_state_flushed: role={role} locator_size={locator_len}");
             }
         }
         capnp::capability::Promise::ok(())

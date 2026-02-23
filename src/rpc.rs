@@ -49,7 +49,7 @@ impl RpcInterface {
         let response = req.send().promise.await?;
         let node = response.get()?.get_result()?;
 
-        eprintln!("IPC handshake complete");
+        log::info!("IPC handshake complete");
         Ok(Self {
             rpc_handle,
             disconnector,

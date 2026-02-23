@@ -4,24 +4,14 @@ mod rpc;
 mod server;
 
 use anyhow::Context;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use log::{debug, info};
+use std::sync::atomic::Ordering::Relaxed;
 use std::{env, time::Duration};
 use tokio::task;
 
 use metrics::Metrics;
 use notifications::NotificationHandler;
 use rpc::RpcInterface;
-
-pub(crate) static DEBUG: AtomicBool = AtomicBool::new(false);
-
-macro_rules! debug {
-    ($($arg:tt)*) => {
-        if crate::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-            eprintln!($($arg)*);
-        }
-    };
-}
-pub(crate) use debug;
 
 #[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod chain_capnp {
@@ -81,23 +71,22 @@ async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> anyhow::Result<(
     metrics.bytes_recv.store(bytes_recv, Relaxed);
     metrics.bytes_sent.store(bytes_sent, Relaxed);
 
-    debug!("--- poll ---");
-    debug!("  chain_height={h} ibd={ibd} verification_progress={progress:.6}");
-    debug!("  block_height={}", metrics.block_height.load(Relaxed));
-    debug!("  mempool_size={mempool_size} mempool_bytes={mempool_bytes} mempool_max={mempool_max}");
-    debug!("  peers={peers} bytes_recv={bytes_recv} bytes_sent={bytes_sent}");
+    debug!("poll: chain_height={h} ibd={ibd} verification_progress={progress:.6}");
+    debug!("poll: block_height={}", metrics.block_height.load(Relaxed));
+    debug!("poll: mempool_size={mempool_size} mempool_bytes={mempool_bytes} mempool_max={mempool_max}");
+    debug!("poll: peers={peers} bytes_recv={bytes_recv} bytes_sent={bytes_sent}");
     debug!(
-        "  blocks_connected={} blocks_disconnected={}",
+        "poll: blocks_connected={} blocks_disconnected={}",
         metrics.blocks_connected.load(Relaxed),
         metrics.blocks_disconnected.load(Relaxed)
     );
     debug!(
-        "  mempool_tx_added={} mempool_tx_removed={}",
+        "poll: mempool_tx_added={} mempool_tx_removed={}",
         metrics.mempool_tx_added.load(Relaxed),
         metrics.mempool_tx_removed.load(Relaxed)
     );
     debug!(
-        "  tip_updates={} chain_state_flushes={}",
+        "poll: tip_updates={} chain_state_flushes={}",
         metrics.tip_updates.load(Relaxed),
         metrics.chain_state_flushes.load(Relaxed)
     );
@@ -114,10 +103,10 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
             metrics: metrics.clone(),
         })
         .await?;
-    eprintln!("registered for chain notifications");
+    info!("registered for chain notifications");
 
     poll_metrics(&rpc, &metrics).await?;
-    eprintln!(
+    info!(
         "chain height: {}, IBD: {}",
         metrics.chain_height.load(Relaxed),
         metrics.ibd.load(Relaxed)
@@ -133,11 +122,11 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
                 poll_metrics(&rpc, &metrics).await?;
             }
             _ = &mut ctrl_c => {
-                eprintln!("received SIGINT, shutting down...");
+                info!("received SIGINT, shutting down...");
                 break;
             }
             _ = sigterm.recv() => {
-                eprintln!("received SIGTERM, shutting down...");
+                info!("received SIGTERM, shutting down...");
                 break;
             }
         }
@@ -146,10 +135,10 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
     let mut req = subscription.disconnect_request();
     req.get().get_context()?.set_thread(rpc.thread.clone());
     req.send().promise.await?;
-    eprintln!("notifications disconnected");
+    info!("notifications disconnected");
 
     rpc.disconnect().await?;
-    eprintln!("RPC disconnected");
+    info!("RPC disconnected");
     Ok(())
 }
 
@@ -175,12 +164,19 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("usage: ipc-exporter-rust [--debug] [--metrics-addr HOST:PORT] <socket-path>");
         std::process::exit(1);
     };
-    DEBUG.store(debug, Relaxed);
+    env_logger::Builder::new()
+        .filter_level(if debug {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Info
+        })
+        .format_target(false)
+        .init();
 
     let stream = tokio::net::UnixStream::connect(&socket_path)
         .await
         .context("failed to connect to IPC socket")?;
-    eprintln!("connected to {socket_path}");
+    info!("connected to {socket_path}");
 
     task::LocalSet::new().run_until(run(stream, metrics_addr)).await
 }
