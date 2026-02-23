@@ -1,4 +1,5 @@
 mod metrics;
+mod server;
 
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use tokio::task::{self, JoinHandle};
@@ -7,9 +8,8 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::Arc;
 use std::{env, time::Duration};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use metrics::{format_metrics, Metrics};
+use metrics::Metrics;
 
 static DEBUG: AtomicBool = AtomicBool::new(false);
 
@@ -350,29 +350,6 @@ impl chain_capnp::chain_notifications::Server for NotificationHandler {
     }
 }
 
-async fn serve_metrics(metrics: Arc<Metrics>, addr: String) {
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .unwrap_or_else(|e| panic!("failed to bind metrics server on {addr}: {e}"));
-    eprintln!("metrics server listening on http://{addr}/metrics");
-    loop {
-        let Ok((mut stream, _)) = listener.accept().await else {
-            continue;
-        };
-        let metrics = metrics.clone();
-        tokio::spawn(async move {
-            let mut buf = [0u8; 1024];
-            let _ = stream.read(&mut buf).await;
-            let body = format_metrics(&metrics);
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len(),
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-    }
-}
-
 async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> Result<(), Box<dyn std::error::Error>> {
     let h = rpc.get_height().await?;
     let ibd = rpc.is_ibd().await?;
@@ -420,7 +397,7 @@ async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> Result<(), Box<d
 async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> Result<(), Box<dyn std::error::Error>> {
     let rpc = RpcInterface::new(stream).await?;
     let metrics = Metrics::new();
-    tokio::spawn(serve_metrics(metrics.clone(), metrics_addr));
+    tokio::spawn(server::serve_metrics(metrics.clone(), metrics_addr));
 
     let subscription = rpc
         .register_notifications(NotificationHandler {
