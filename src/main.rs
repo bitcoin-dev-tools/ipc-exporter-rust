@@ -443,13 +443,52 @@ async fn serve_metrics(metrics: Arc<Metrics>) {
     }
 }
 
+async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> Result<(), Box<dyn std::error::Error>> {
+    let h = rpc.get_height().await?;
+    let ibd = rpc.is_ibd().await?;
+    let progress = rpc.get_verification_progress().await?;
+    let mempool_size = rpc.get_mempool_size().await?;
+    let mempool_bytes = rpc.get_mempool_dynamic_usage().await?;
+    let mempool_max = rpc.get_mempool_max_usage().await?;
+    let peers = rpc.get_node_count().await?;
+    let bytes_recv = rpc.get_total_bytes_recv().await?;
+    let bytes_sent = rpc.get_total_bytes_sent().await?;
+
+    metrics.chain_height.store(h, Relaxed);
+    metrics.ibd.store(ibd, Relaxed);
+    metrics.verification_progress.store(progress.to_bits(), Relaxed);
+    metrics.mempool_size.store(mempool_size, Relaxed);
+    metrics.mempool_bytes.store(mempool_bytes, Relaxed);
+    metrics.mempool_max.store(mempool_max, Relaxed);
+    metrics.peers.store(peers, Relaxed);
+    metrics.bytes_recv.store(bytes_recv, Relaxed);
+    metrics.bytes_sent.store(bytes_sent, Relaxed);
+
+    debug!("--- poll ---");
+    debug!("  chain_height={h} ibd={ibd} verification_progress={progress:.6}");
+    debug!("  block_height={}", metrics.block_height.load(Relaxed));
+    debug!("  mempool_size={mempool_size} mempool_bytes={mempool_bytes} mempool_max={mempool_max}");
+    debug!("  peers={peers} bytes_recv={bytes_recv} bytes_sent={bytes_sent}");
+    debug!(
+        "  blocks_connected={} blocks_disconnected={}",
+        metrics.blocks_connected.load(Relaxed),
+        metrics.blocks_disconnected.load(Relaxed)
+    );
+    debug!(
+        "  mempool_tx_added={} mempool_tx_removed={}",
+        metrics.mempool_tx_added.load(Relaxed),
+        metrics.mempool_tx_removed.load(Relaxed)
+    );
+    debug!(
+        "  tip_updates={} chain_state_flushes={}",
+        metrics.tip_updates.load(Relaxed),
+        metrics.chain_state_flushes.load(Relaxed)
+    );
+    Ok(())
+}
+
 async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::Error>> {
     let rpc = RpcInterface::new(stream).await?;
-
-    let height = rpc.get_height().await?;
-    let ibd = rpc.is_ibd().await?;
-    eprintln!("chain height: {height}, IBD: {ibd}");
-
     let metrics = Metrics::new();
     tokio::spawn(serve_metrics(metrics.clone()));
 
@@ -458,7 +497,14 @@ async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::E
             metrics: metrics.clone(),
         })
         .await?;
-    eprintln!("registered for chain notifications, waiting for events...");
+    eprintln!("registered for chain notifications");
+
+    poll_metrics(&rpc, &metrics).await?;
+    eprintln!(
+        "chain height: {}, IBD: {}",
+        metrics.chain_height.load(Relaxed),
+        metrics.ibd.load(Relaxed)
+    );
 
     let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let ctrl_c = tokio::signal::ctrl_c();
@@ -467,46 +513,7 @@ async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::E
     loop {
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(60)) => {
-                let h = rpc.get_height().await?;
-                let ibd = rpc.is_ibd().await?;
-                let progress = rpc.get_verification_progress().await?;
-                let mempool_size = rpc.get_mempool_size().await?;
-                let mempool_bytes = rpc.get_mempool_dynamic_usage().await?;
-                let mempool_max = rpc.get_mempool_max_usage().await?;
-                let peers = rpc.get_node_count().await?;
-                let bytes_recv = rpc.get_total_bytes_recv().await?;
-                let bytes_sent = rpc.get_total_bytes_sent().await?;
-
-                metrics.chain_height.store(h, Relaxed);
-                metrics.ibd.store(ibd, Relaxed);
-                metrics.verification_progress.store(progress.to_bits(), Relaxed);
-                metrics.mempool_size.store(mempool_size, Relaxed);
-                metrics.mempool_bytes.store(mempool_bytes, Relaxed);
-                metrics.mempool_max.store(mempool_max, Relaxed);
-                metrics.peers.store(peers, Relaxed);
-                metrics.bytes_recv.store(bytes_recv, Relaxed);
-                metrics.bytes_sent.store(bytes_sent, Relaxed);
-
-                debug!("--- poll ---");
-                debug!("  chain_height={h} ibd={ibd} verification_progress={progress:.6}");
-                debug!("  block_height={}", metrics.block_height.load(Relaxed));
-                debug!("  mempool_size={mempool_size} mempool_bytes={mempool_bytes} mempool_max={mempool_max}");
-                debug!("  peers={peers} bytes_recv={bytes_recv} bytes_sent={bytes_sent}");
-                debug!(
-                    "  blocks_connected={} blocks_disconnected={}",
-                    metrics.blocks_connected.load(Relaxed),
-                    metrics.blocks_disconnected.load(Relaxed)
-                );
-                debug!(
-                    "  mempool_tx_added={} mempool_tx_removed={}",
-                    metrics.mempool_tx_added.load(Relaxed),
-                    metrics.mempool_tx_removed.load(Relaxed)
-                );
-                debug!(
-                    "  tip_updates={} chain_state_flushes={}",
-                    metrics.tip_updates.load(Relaxed),
-                    metrics.chain_state_flushes.load(Relaxed)
-                );
+                poll_metrics(&rpc, &metrics).await?;
             }
             _ = &mut ctrl_c => {
                 eprintln!("received SIGINT, shutting down...");
