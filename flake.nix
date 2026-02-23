@@ -79,6 +79,9 @@
             version = "30.99-ipc";
             src = bitcoin-node-src;
             buildInputs = old.buildInputs ++ [ pkgs.libsodium ];
+            cmakeFlags = old.cmakeFlags ++ [
+              (pkgs.lib.cmakeBool "WITH_MULTIPROCESS" true)
+            ];
             preUnpack = "";
             doCheck = false;
             doInstallCheck = false;
