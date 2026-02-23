@@ -73,11 +73,13 @@ nix build
 
 ## Bitcoin Node Package
 
-The flake provides a multiprocess-enabled `bitcoin-node` package built from ryanofsky's `pr/ipc` branch. This is the `bitcoin-node` binary required for IPC socket communication.
+The flake provides a multiprocess-enabled Bitcoin Core package built from ryanofsky's `pr/ipc` branch (version 30.99). This includes the `bitcoin-node` binary required for IPC socket communication.
 
 ```
 nix build .#bitcoin-node
 ```
+
+The package contains: `libexec/bitcoin-node` (multiprocess daemon), `bin/bitcoind`, `bin/bitcoin-cli`, `bin/bitcoin-wallet`, `bin/bitcoin`. The multiprocess daemon is in `libexec/`, not `bin/`.
 
 Available as `packages.<system>.bitcoin-node` and via `overlays.default` (exposes `pkgs.bitcoin-node`). The source is pinned as the `bitcoin-node-src` flake input — update with `nix flake update bitcoin-node-src`.
 
