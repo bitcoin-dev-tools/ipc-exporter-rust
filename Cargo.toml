@@ -5,6 +5,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
+anyhow = "1.0.102"
 bitcoin = "0.32"
 capnp = "0.19"
 capnp-rpc = "0.19"

@@ -3,8 +3,8 @@ mod notifications;
 mod rpc;
 mod server;
 
+use anyhow::Context;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
-use std::sync::Arc;
 use std::{env, time::Duration};
 use tokio::task;
 
@@ -60,7 +60,7 @@ pub(crate) mod proxy_capnp {
     include!(concat!(env!("OUT_DIR"), "/mp/proxy_capnp.rs"));
 }
 
-async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> Result<(), Box<dyn std::error::Error>> {
+async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> anyhow::Result<()> {
     let h = rpc.get_height().await?;
     let ibd = rpc.is_ibd().await?;
     let progress = rpc.get_verification_progress().await?;
@@ -104,7 +104,7 @@ async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> Result<(), Box<d
     Ok(())
 }
 
-async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> Result<(), Box<dyn std::error::Error>> {
+async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Result<()> {
     let rpc = RpcInterface::new(stream).await?;
     let metrics = Metrics::new();
     tokio::spawn(server::serve_metrics(metrics.clone(), metrics_addr));
@@ -154,7 +154,7 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> Result<(),
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     let mut debug = false;
     let mut metrics_addr = "127.0.0.1:9332".to_string();
     let mut socket_path = None;
@@ -177,7 +177,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     DEBUG.store(debug, Relaxed);
 
-    let stream = tokio::net::UnixStream::connect(&socket_path).await?;
+    let stream = tokio::net::UnixStream::connect(&socket_path)
+        .await
+        .context("failed to connect to IPC socket")?;
     eprintln!("connected to {socket_path}");
 
     task::LocalSet::new().run_until(run(stream, metrics_addr)).await
