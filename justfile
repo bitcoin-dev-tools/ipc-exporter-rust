@@ -5,7 +5,7 @@ default:
     just --list
 
 build:
-    cargo build
+    nix build
 
 check:
     cargo clippy -- -D warnings
