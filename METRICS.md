@@ -2,9 +2,10 @@
 
 The exporter serves Prometheus text format metrics over HTTP.
 
-- **URL**: `http://127.0.0.1:9332/metrics`
+- **URL**: `http://127.0.0.1:9332/metrics` (default)
 - **Format**: [Prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) (`text/plain; version=0.0.4`)
 - **Method**: Any request to the TCP listener returns metrics (no path routing)
+- **Override**: `--metrics-addr HOST:PORT` (e.g. `--metrics-addr 0.0.0.0:9100`)
 
 ## Collection Methods
 

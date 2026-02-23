@@ -420,11 +420,11 @@ fn format_metrics(m: &Metrics) -> String {
     s
 }
 
-async fn serve_metrics(metrics: Arc<Metrics>) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:9332")
+async fn serve_metrics(metrics: Arc<Metrics>, addr: String) {
+    let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .expect("failed to bind metrics server");
-    eprintln!("metrics server listening on http://127.0.0.1:9332/metrics");
+        .unwrap_or_else(|e| panic!("failed to bind metrics server on {addr}: {e}"));
+    eprintln!("metrics server listening on http://{addr}/metrics");
     loop {
         let Ok((mut stream, _)) = listener.accept().await else {
             continue;
@@ -487,10 +487,10 @@ async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> Result<(), Box<d
     Ok(())
 }
 
-async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::Error>> {
+async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> Result<(), Box<dyn std::error::Error>> {
     let rpc = RpcInterface::new(stream).await?;
     let metrics = Metrics::new();
-    tokio::spawn(serve_metrics(metrics.clone()));
+    tokio::spawn(serve_metrics(metrics.clone(), metrics_addr));
 
     let subscription = rpc
         .register_notifications(NotificationHandler {
@@ -538,17 +538,30 @@ async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::E
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
-    let debug = args.iter().any(|a| a == "--debug");
-    let socket_path = args.iter().skip(1).find(|a| *a != "--debug");
+    let mut debug = false;
+    let mut metrics_addr = "127.0.0.1:9332".to_string();
+    let mut socket_path = None;
+    let mut args_iter = env::args().skip(1);
+    while let Some(arg) = args_iter.next() {
+        match arg.as_str() {
+            "--debug" => debug = true,
+            "--metrics-addr" => {
+                metrics_addr = args_iter.next().unwrap_or_else(|| {
+                    eprintln!("--metrics-addr requires a value");
+                    std::process::exit(1);
+                });
+            }
+            _ => socket_path = Some(arg),
+        }
+    }
     let Some(socket_path) = socket_path else {
-        eprintln!("usage: {} [--debug] <socket-path>", args[0]);
+        eprintln!("usage: ipc-exporter-rust [--debug] [--metrics-addr HOST:PORT] <socket-path>");
         std::process::exit(1);
     };
     DEBUG.store(debug, Relaxed);
 
-    let stream = tokio::net::UnixStream::connect(socket_path).await?;
+    let stream = tokio::net::UnixStream::connect(&socket_path).await?;
     eprintln!("connected to {socket_path}");
 
-    task::LocalSet::new().run_until(run(stream)).await
+    task::LocalSet::new().run_until(run(stream, metrics_addr)).await
 }
