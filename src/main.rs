@@ -1,11 +1,15 @@
+mod metrics;
+
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use tokio::task::{self, JoinHandle};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU64, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::Arc;
 use std::{env, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+use metrics::{format_metrics, Metrics};
 
 static DEBUG: AtomicBool = AtomicBool::new(false);
 
@@ -80,48 +84,6 @@ fn removal_reason(reason: i32) -> &'static str {
         4 => "conflict",
         5 => "replaced",
         _ => "unknown",
-    }
-}
-
-struct Metrics {
-    blocks_connected: AtomicU64,
-    blocks_disconnected: AtomicU64,
-    mempool_tx_added: AtomicU64,
-    mempool_tx_removed: AtomicU64,
-    tip_updates: AtomicU64,
-    chain_state_flushes: AtomicU64,
-    block_height: AtomicI32,
-    chain_height: AtomicI32,
-    ibd: AtomicBool,
-    verification_progress: AtomicU64,
-    mempool_size: AtomicU64,
-    mempool_bytes: AtomicU64,
-    mempool_max: AtomicU64,
-    peers: AtomicU64,
-    bytes_recv: AtomicI64,
-    bytes_sent: AtomicI64,
-}
-
-impl Metrics {
-    fn new() -> Arc<Self> {
-        Arc::new(Self {
-            blocks_connected: AtomicU64::new(0),
-            blocks_disconnected: AtomicU64::new(0),
-            mempool_tx_added: AtomicU64::new(0),
-            mempool_tx_removed: AtomicU64::new(0),
-            tip_updates: AtomicU64::new(0),
-            chain_state_flushes: AtomicU64::new(0),
-            block_height: AtomicI32::new(-1),
-            chain_height: AtomicI32::new(-1),
-            ibd: AtomicBool::new(false),
-            verification_progress: AtomicU64::new(0),
-            mempool_size: AtomicU64::new(0),
-            mempool_bytes: AtomicU64::new(0),
-            mempool_max: AtomicU64::new(0),
-            peers: AtomicU64::new(0),
-            bytes_recv: AtomicI64::new(0),
-            bytes_sent: AtomicI64::new(0),
-        })
     }
 }
 
@@ -386,38 +348,6 @@ impl chain_capnp::chain_notifications::Server for NotificationHandler {
         }
         capnp::capability::Promise::ok(())
     }
-}
-
-fn format_metrics(m: &Metrics) -> String {
-    use std::fmt::Write;
-    let mut s = String::with_capacity(2048);
-    macro_rules! counter {
-        ($name:expr, $val:expr) => {
-            let _ = writeln!(s, "# TYPE {0} counter\n{0} {1}", $name, $val);
-        };
-    }
-    macro_rules! gauge {
-        ($name:expr, $val:expr) => {
-            let _ = writeln!(s, "# TYPE {0} gauge\n{0} {1}", $name, $val);
-        };
-    }
-    counter!("bitcoin_blocks_connected_total", m.blocks_connected.load(Relaxed));
-    counter!("bitcoin_blocks_disconnected_total", m.blocks_disconnected.load(Relaxed));
-    counter!("bitcoin_mempool_tx_added_total", m.mempool_tx_added.load(Relaxed));
-    counter!("bitcoin_mempool_tx_removed_total", m.mempool_tx_removed.load(Relaxed));
-    counter!("bitcoin_tip_updates_total", m.tip_updates.load(Relaxed));
-    counter!("bitcoin_chain_state_flushes_total", m.chain_state_flushes.load(Relaxed));
-    gauge!("bitcoin_block_height", m.block_height.load(Relaxed));
-    gauge!("bitcoin_chain_height", m.chain_height.load(Relaxed));
-    gauge!("bitcoin_ibd", m.ibd.load(Relaxed) as u8);
-    gauge!("bitcoin_verification_progress", f64::from_bits(m.verification_progress.load(Relaxed)));
-    gauge!("bitcoin_mempool_size", m.mempool_size.load(Relaxed));
-    gauge!("bitcoin_mempool_bytes", m.mempool_bytes.load(Relaxed));
-    gauge!("bitcoin_mempool_max_bytes", m.mempool_max.load(Relaxed));
-    gauge!("bitcoin_peers", m.peers.load(Relaxed));
-    counter!("bitcoin_bytes_recv_total", m.bytes_recv.load(Relaxed));
-    counter!("bitcoin_bytes_sent_total", m.bytes_sent.load(Relaxed));
-    s
 }
 
 async fn serve_metrics(metrics: Arc<Metrics>, addr: String) {
