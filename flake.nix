@@ -41,6 +41,8 @@
         (crane.mkLib pkgs).overrideToolchain rust;
     in
     {
+      nixosModules.default = import ./module.nix;
+
       packages = forAllSystems (
         system:
         let
