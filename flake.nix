@@ -50,6 +50,8 @@
 
       overlays.default = final: prev: {
         bitcoin-node = self.packages.${final.system}.bitcoin-node;
+        bitcoind = self.packages.${final.system}.bitcoin-node;
+        bitcoin-cli = self.packages.${final.system}.bitcoin-node;
       };
 
       packages = forAllSystems (
