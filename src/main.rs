@@ -112,13 +112,13 @@ impl RpcInterface {
     async fn register_notifications(
         &self,
         handler: impl chain_capnp::chain_notifications::Server + 'static,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<HandlerClient, Box<dyn std::error::Error>> {
         let client: chain_capnp::chain_notifications::Client = capnp_rpc::new_client(handler);
         let mut req = self.chain.handle_notifications_request();
         req.get().get_context()?.set_thread(self.thread.clone());
         req.get().set_notifications(client);
-        let _response = req.send().promise.await?;
-        Ok(())
+        let response = req.send().promise.await?;
+        Ok(response.get()?.get_result()?)
     }
 
     async fn disconnect(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -216,7 +216,7 @@ async fn run(stream: tokio::net::UnixStream) -> Result<(), Box<dyn std::error::E
     let ibd = rpc.is_ibd().await?;
     eprintln!("chain height: {height}, IBD: {ibd}");
 
-    rpc.register_notifications(NotificationHandler).await?;
+    let _subscription = rpc.register_notifications(NotificationHandler).await?;
     eprintln!("registered for chain notifications, waiting for events...");
 
     loop {
