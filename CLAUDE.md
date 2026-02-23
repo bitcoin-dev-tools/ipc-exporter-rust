@@ -71,6 +71,16 @@ Or via Nix:
 nix build
 ```
 
+## Bitcoin Node Package
+
+The flake provides a multiprocess-enabled `bitcoin-node` package built from ryanofsky's `pr/ipc` branch. This is the `bitcoin-node` binary required for IPC socket communication.
+
+```
+nix build .#bitcoin-node
+```
+
+Available as `packages.<system>.bitcoin-node` and via `overlays.default` (exposes `pkgs.bitcoin-node`). The source is pinned as the `bitcoin-node-src` flake input — update with `nix flake update bitcoin-node-src`.
+
 ## NixOS Module
 
 The flake exports `nixosModules.default` (defined in `module.nix`). It creates a systemd service `bitcoind-ipc-exporter`.
