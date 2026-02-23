@@ -23,39 +23,39 @@ macro_rules! debug {
 }
 pub(crate) use debug;
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod chain_capnp {
     include!(concat!(env!("OUT_DIR"), "/chain_capnp.rs"));
 }
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod common_capnp {
     include!(concat!(env!("OUT_DIR"), "/common_capnp.rs"));
 }
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod echo_capnp {
     include!(concat!(env!("OUT_DIR"), "/echo_capnp.rs"));
 }
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod handler_capnp {
     include!(concat!(env!("OUT_DIR"), "/handler_capnp.rs"));
 }
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod init_capnp {
     include!(concat!(env!("OUT_DIR"), "/init_capnp.rs"));
 }
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod mining_capnp {
     include!(concat!(env!("OUT_DIR"), "/mining_capnp.rs"));
 }
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod node_capnp {
     include!(concat!(env!("OUT_DIR"), "/node_capnp.rs"));
 }
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod wallet_capnp {
     include!(concat!(env!("OUT_DIR"), "/wallet_capnp.rs"));
 }
-#[allow(dead_code)]
+#[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod proxy_capnp {
     include!(concat!(env!("OUT_DIR"), "/mp/proxy_capnp.rs"));
 }
