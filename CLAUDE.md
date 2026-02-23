@@ -44,7 +44,7 @@ ipc-exporter-rust [--debug] [--metrics-addr HOST:PORT] <socket-path>
 - `--metrics-addr` — listen address for Prometheus endpoint (default `127.0.0.1:9332`)
 - `<socket-path>` — path to bitcoind's IPC Unix socket
 
-Without `--debug`, only startup/shutdown messages are printed to stderr.
+Without `--debug`, only info-level messages (startup/shutdown) are logged to stderr. Logging uses `env_logger`; `RUST_LOG` can override the level.
 
 ## Metrics
 
