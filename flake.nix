@@ -9,7 +9,7 @@
     };
     crane.url = "github:ipetkov/crane";
     bitcoin-node-src = {
-      url = "github:ryanofsky/bitcoin/pr/ipc";
+      url = "github:willcl-ark/bitcoin/pr/trace";
       flake = false;
     };
   };
@@ -76,7 +76,7 @@
           default = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
           bitcoin-node = pkgs.bitcoind.overrideAttrs (old: {
             pname = "bitcoin-node";
-            version = "30.99-ipc";
+            version = "30.99-tracing";
             src = bitcoin-node-src;
             buildInputs = old.buildInputs ++ [ pkgs.libsodium ];
             cmakeFlags = old.cmakeFlags ++ [
