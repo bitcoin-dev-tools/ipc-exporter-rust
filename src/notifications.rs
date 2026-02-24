@@ -89,22 +89,26 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
         _: BlockConnectedResults,
     ) -> capnp::capability::Promise<(), capnp::Error> {
         self.metrics.blocks_connected.fetch_add(1, Relaxed);
-        if let Ok(p) = params.get() {
-            if let Ok(block) = p.get_block() {
-                self.metrics.block_height.store(block.get_height(), Relaxed);
-                if log::log_enabled!(log::Level::Debug) {
-                    let height = block.get_height();
-                    let hash = block.get_hash().ok().map(display_hash).unwrap_or_default();
-                    let prev = block.get_prev_hash().ok().map(display_hash).unwrap_or_default();
-                    let time_max = block.get_chain_time_max();
-                    log::debug!("block_connected: height={height} hash={hash} prev={prev} chain_time_max={time_max}");
-                    if let Ok(role) = p.get_role() {
-                        if role.get_historical() {
-                            log::debug!("  (historical chainstate)");
+        match params.get() {
+            Ok(p) => match p.get_block() {
+                Ok(block) => {
+                    self.metrics.block_height.store(block.get_height(), Relaxed);
+                    if log::log_enabled!(log::Level::Debug) {
+                        let height = block.get_height();
+                        let hash = block.get_hash().ok().map(display_hash).unwrap_or_default();
+                        let prev = block.get_prev_hash().ok().map(display_hash).unwrap_or_default();
+                        let time_max = block.get_chain_time_max();
+                        log::debug!("block_connected: height={height} hash={hash} prev={prev} chain_time_max={time_max}");
+                        if let Ok(role) = p.get_role() {
+                            if role.get_historical() {
+                                log::debug!("  (historical chainstate)");
+                            }
                         }
                     }
                 }
-            }
+                Err(e) => log::warn!("block_connected: failed to parse block: {e}"),
+            },
+            Err(e) => log::warn!("block_connected: failed to parse params: {e}"),
         }
         capnp::capability::Promise::ok(())
     }
