@@ -63,6 +63,9 @@ in
       inherit (cfg) after bindsTo;
       wantedBy = [ "multi-user.target" ];
 
+      startLimitIntervalSec = 300;
+      startLimitBurst = 20;
+
       serviceConfig = {
         User = cfg.user;
         Group = cfg.group;
