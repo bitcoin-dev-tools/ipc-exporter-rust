@@ -128,7 +128,7 @@ impl RpcInterface {
     }
 
     pub async fn get_node_count(&self) -> Result<u64> {
-        const CONNECTIONS_ALL: u32 = 3;
+        const CONNECTIONS_ALL: i32 = 3;
         let mut req = self.node.get_node_count_request();
         req.get().get_context()?.set_thread(self.thread.clone());
         req.get().set_flags(CONNECTIONS_ALL);
