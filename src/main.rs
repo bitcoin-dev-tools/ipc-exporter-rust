@@ -108,7 +108,8 @@ async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> anyhow::Result<(
 async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Result<()> {
     let rpc = RpcInterface::new(stream).await?;
     let metrics = Metrics::new();
-    tokio::spawn(server::serve_metrics(metrics.clone(), metrics_addr));
+    let cancel = tokio_util::sync::CancellationToken::new();
+    tokio::spawn(server::serve_metrics(metrics.clone(), metrics_addr, cancel.clone()));
 
     let subscription = rpc
         .register_notifications(NotificationHandler {
@@ -150,6 +151,8 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
             }
         }
     }
+
+    cancel.cancel();
 
     let mut req = subscription.disconnect_request();
     req.get().get_context()?.set_thread(rpc.thread.clone());
