@@ -9,6 +9,7 @@ use crate::chain_capnp::chain_notifications::{
     UpdatedBlockTipParams, UpdatedBlockTipResults,
 };
 use crate::metrics::Metrics;
+use crate::tracing_capnp::utxo_cache_trace;
 
 fn display_hash(bytes: &[u8]) -> String {
     bytes.iter().rev().map(|b| format!("{b:02x}")).collect()
@@ -151,6 +152,99 @@ impl crate::chain_capnp::chain_notifications::Server for NotificationHandler {
                     .unwrap_or("unknown");
                 let locator_len = p.get_locator().ok().map(|l| l.len()).unwrap_or(0);
                 log::debug!("chain_state_flushed: role={role} locator_size={locator_len}");
+            }
+        }
+        capnp::capability::Promise::ok(())
+    }
+}
+
+pub struct UtxoCacheHandler {
+    pub metrics: Arc<Metrics>,
+}
+
+impl utxo_cache_trace::Server for UtxoCacheHandler {
+    fn destroy(
+        &mut self,
+        _: utxo_cache_trace::DestroyParams,
+        _: utxo_cache_trace::DestroyResults,
+    ) -> capnp::capability::Promise<(), capnp::Error> {
+        log::debug!("utxo_cache_trace: destroy");
+        capnp::capability::Promise::ok(())
+    }
+
+    fn add(
+        &mut self,
+        params: utxo_cache_trace::AddParams,
+        _: utxo_cache_trace::AddResults,
+    ) -> capnp::capability::Promise<(), capnp::Error> {
+        self.metrics.utxo_cache_add.fetch_add(1, Relaxed);
+        if let Ok(p) = params.get() {
+            if let Ok(info) = p.get_utxo_info() {
+                self.metrics
+                    .utxo_cache_add_value
+                    .fetch_add(info.get_value() as u64, Relaxed);
+                if log::log_enabled!(log::Level::Debug) {
+                    let hash = info.get_outpoint_hash().ok().map(display_hash).unwrap_or_default();
+                    log::debug!(
+                        "utxo_cache_add: outpoint={hash}:{} height={} value={} coinbase={}",
+                        info.get_outpoint_n(),
+                        info.get_height(),
+                        info.get_value(),
+                        info.get_is_coinbase()
+                    );
+                }
+            }
+        }
+        capnp::capability::Promise::ok(())
+    }
+
+    fn spend(
+        &mut self,
+        params: utxo_cache_trace::SpendParams,
+        _: utxo_cache_trace::SpendResults,
+    ) -> capnp::capability::Promise<(), capnp::Error> {
+        self.metrics.utxo_cache_spend.fetch_add(1, Relaxed);
+        if let Ok(p) = params.get() {
+            if let Ok(info) = p.get_utxo_info() {
+                self.metrics
+                    .utxo_cache_spend_value
+                    .fetch_add(info.get_value() as u64, Relaxed);
+                if log::log_enabled!(log::Level::Debug) {
+                    let hash = info.get_outpoint_hash().ok().map(display_hash).unwrap_or_default();
+                    log::debug!(
+                        "utxo_cache_spend: outpoint={hash}:{} height={} value={} coinbase={}",
+                        info.get_outpoint_n(),
+                        info.get_height(),
+                        info.get_value(),
+                        info.get_is_coinbase()
+                    );
+                }
+            }
+        }
+        capnp::capability::Promise::ok(())
+    }
+
+    fn uncache(
+        &mut self,
+        params: utxo_cache_trace::UncacheParams,
+        _: utxo_cache_trace::UncacheResults,
+    ) -> capnp::capability::Promise<(), capnp::Error> {
+        self.metrics.utxo_cache_uncache.fetch_add(1, Relaxed);
+        if let Ok(p) = params.get() {
+            if let Ok(info) = p.get_utxo_info() {
+                self.metrics
+                    .utxo_cache_uncache_value
+                    .fetch_add(info.get_value() as u64, Relaxed);
+                if log::log_enabled!(log::Level::Debug) {
+                    let hash = info.get_outpoint_hash().ok().map(display_hash).unwrap_or_default();
+                    log::debug!(
+                        "utxo_cache_uncache: outpoint={hash}:{} height={} value={} coinbase={}",
+                        info.get_outpoint_n(),
+                        info.get_height(),
+                        info.get_value(),
+                        info.get_is_coinbase()
+                    );
+                }
             }
         }
         capnp::capability::Promise::ok(())

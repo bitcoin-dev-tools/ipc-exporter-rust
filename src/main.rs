@@ -10,7 +10,7 @@ use std::{env, time::Duration};
 use tokio::task;
 
 use metrics::Metrics;
-use notifications::NotificationHandler;
+use notifications::{NotificationHandler, UtxoCacheHandler};
 use rpc::RpcInterface;
 
 #[allow(dead_code, unused_parens, clippy::all)]
@@ -40,6 +40,10 @@ pub(crate) mod mining_capnp {
 #[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod node_capnp {
     include!(concat!(env!("OUT_DIR"), "/node_capnp.rs"));
+}
+#[allow(dead_code, unused_parens, clippy::all)]
+pub(crate) mod tracing_capnp {
+    include!(concat!(env!("OUT_DIR"), "/tracing_capnp.rs"));
 }
 #[allow(dead_code, unused_parens, clippy::all)]
 pub(crate) mod wallet_capnp {
@@ -90,6 +94,12 @@ async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> anyhow::Result<(
         metrics.tip_updates.load(Relaxed),
         metrics.chain_state_flushes.load(Relaxed)
     );
+    debug!(
+        "poll: utxo_cache_add={} utxo_cache_spend={} utxo_cache_uncache={}",
+        metrics.utxo_cache_add.load(Relaxed),
+        metrics.utxo_cache_spend.load(Relaxed),
+        metrics.utxo_cache_uncache.load(Relaxed)
+    );
     Ok(())
 }
 
@@ -104,6 +114,13 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
         })
         .await?;
     info!("registered for chain notifications");
+
+    let utxo_trace = rpc
+        .register_utxo_cache_trace(UtxoCacheHandler {
+            metrics: metrics.clone(),
+        })
+        .await?;
+    info!("registered for UTXO cache trace");
 
     poll_metrics(&rpc, &metrics).await?;
     info!(
@@ -135,6 +152,11 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
     let mut req = subscription.disconnect_request();
     req.get().get_context()?.set_thread(rpc.thread.clone());
     req.send().promise.await?;
+
+    let mut req = utxo_trace.disconnect_request();
+    req.get().get_context()?.set_thread(rpc.thread.clone());
+    req.send().promise.await?;
+
     info!("notifications disconnected");
 
     rpc.disconnect().await?;

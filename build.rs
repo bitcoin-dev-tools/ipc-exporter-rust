@@ -9,6 +9,7 @@ fn main() {
         "schema/init.capnp",
         "schema/mining.capnp",
         "schema/node.capnp",
+        "schema/tracing.capnp",
         "schema/wallet.capnp",
         "schema/mp/proxy.capnp",
     ];

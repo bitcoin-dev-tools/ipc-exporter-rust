@@ -88,12 +88,12 @@ interface InitMessageCallback $Proxy.wrap("ProxyCallback<interfaces::Node::InitM
 
 interface MessageBoxCallback $Proxy.wrap("ProxyCallback<interfaces::Node::MessageBoxFn>") {
     destroy @0 (context :Proxy.Context) -> ();
-    call @1 (context :Proxy.Context, message :Common.BilingualStr, caption :Text, style :UInt32) -> (result :Bool);
+    call @1 (context :Proxy.Context, message :Common.BilingualStr, style :UInt32) -> (result :Bool);
 }
 
 interface QuestionCallback $Proxy.wrap("ProxyCallback<interfaces::Node::QuestionFn>") {
     destroy @0 (context :Proxy.Context) -> ();
-    call @1 (context :Proxy.Context, message :Common.BilingualStr, nonInteractiveMessage :Text, caption :Text, style :UInt32) -> (result :Bool);
+    call @1 (context :Proxy.Context, message :Common.BilingualStr, nonInteractiveMessage :Text, style :UInt32) -> (result :Bool);
 }
 
 interface ShowNodeProgressCallback $Proxy.wrap("ProxyCallback<interfaces::Node::ShowProgressFn>") {

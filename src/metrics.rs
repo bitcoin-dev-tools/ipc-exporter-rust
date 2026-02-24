@@ -19,6 +19,12 @@ pub struct Metrics {
     pub peers: AtomicU64,
     pub bytes_recv: AtomicI64,
     pub bytes_sent: AtomicI64,
+    pub utxo_cache_add: AtomicU64,
+    pub utxo_cache_spend: AtomicU64,
+    pub utxo_cache_uncache: AtomicU64,
+    pub utxo_cache_add_value: AtomicU64,
+    pub utxo_cache_spend_value: AtomicU64,
+    pub utxo_cache_uncache_value: AtomicU64,
 }
 
 impl Metrics {
@@ -40,6 +46,12 @@ impl Metrics {
             peers: AtomicU64::new(0),
             bytes_recv: AtomicI64::new(0),
             bytes_sent: AtomicI64::new(0),
+            utxo_cache_add: AtomicU64::new(0),
+            utxo_cache_spend: AtomicU64::new(0),
+            utxo_cache_uncache: AtomicU64::new(0),
+            utxo_cache_add_value: AtomicU64::new(0),
+            utxo_cache_spend_value: AtomicU64::new(0),
+            utxo_cache_uncache_value: AtomicU64::new(0),
         })
     }
 }
@@ -72,5 +84,11 @@ pub fn format_metrics(m: &Metrics) -> String {
     gauge!("bitcoin_peers", m.peers.load(Relaxed));
     counter!("bitcoin_bytes_recv_total", m.bytes_recv.load(Relaxed));
     counter!("bitcoin_bytes_sent_total", m.bytes_sent.load(Relaxed));
+    counter!("bitcoin_utxo_cache_add_total", m.utxo_cache_add.load(Relaxed));
+    counter!("bitcoin_utxo_cache_spend_total", m.utxo_cache_spend.load(Relaxed));
+    counter!("bitcoin_utxo_cache_uncache_total", m.utxo_cache_uncache.load(Relaxed));
+    counter!("bitcoin_utxo_cache_add_value_total", m.utxo_cache_add_value.load(Relaxed));
+    counter!("bitcoin_utxo_cache_spend_value_total", m.utxo_cache_spend_value.load(Relaxed));
+    counter!("bitcoin_utxo_cache_uncache_value_total", m.utxo_cache_uncache_value.load(Relaxed));
     s
 }

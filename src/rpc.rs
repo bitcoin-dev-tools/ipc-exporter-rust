@@ -9,6 +9,8 @@ use crate::handler_capnp::handler::Client as HandlerClient;
 use crate::init_capnp::init::Client as InitClient;
 use crate::node_capnp::node::Client as NodeClient;
 use crate::proxy_capnp::thread::Client as ThreadClient;
+use crate::tracing_capnp;
+use crate::tracing_capnp::tracing::Client as TracingClient;
 
 pub struct RpcInterface {
     rpc_handle: JoinHandle<Result<(), capnp::Error>>,
@@ -16,6 +18,7 @@ pub struct RpcInterface {
     pub(crate) thread: ThreadClient,
     chain: ChainClient,
     node: NodeClient,
+    tracing: TracingClient,
 }
 
 impl RpcInterface {
@@ -49,6 +52,11 @@ impl RpcInterface {
         let response = req.send().promise.await?;
         let node = response.get()?.get_result()?;
 
+        let mut req = init.make_tracing_request();
+        req.get().get_context()?.set_thread(thread.clone());
+        let response = req.send().promise.await?;
+        let tracing = response.get()?.get_result()?;
+
         log::info!("IPC handshake complete");
         Ok(Self {
             rpc_handle,
@@ -56,6 +64,7 @@ impl RpcInterface {
             thread,
             chain,
             node,
+            tracing,
         })
     }
 
@@ -82,6 +91,18 @@ impl RpcInterface {
         req.get().get_context()?.set_thread(self.thread.clone());
         req.get().set_notifications(client);
         let response = req.send().promise.await.context("handle_notifications")?;
+        Ok(response.get()?.get_result()?)
+    }
+
+    pub async fn register_utxo_cache_trace(
+        &self,
+        handler: impl tracing_capnp::utxo_cache_trace::Server + 'static,
+    ) -> Result<HandlerClient> {
+        let client: tracing_capnp::utxo_cache_trace::Client = capnp_rpc::new_client(handler);
+        let mut req = self.tracing.trace_utxo_cache_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        req.get().set_callback(client);
+        let response = req.send().promise.await.context("trace_utxo_cache")?;
         Ok(response.get()?.get_result()?)
     }
 

@@ -13,6 +13,7 @@ $Proxy.include("interfaces/echo.h");
 $Proxy.include("interfaces/init.h");
 $Proxy.include("interfaces/mining.h");
 $Proxy.include("interfaces/node.h");
+$Proxy.include("interfaces/tracing.h");
 $Proxy.includeTypes("ipc/capnp/init-types.h");
 
 using Chain = import "chain.capnp";
@@ -20,13 +21,18 @@ using Common = import "common.capnp";
 using Echo = import "echo.capnp";
 using Mining = import "mining.capnp";
 using Node = import "node.capnp";
+using Tracing = import "tracing.capnp";
 using Wallet = import "wallet.capnp";
 
 interface Init $Proxy.wrap("interfaces::Init") {
     construct @0 (threadMap: Proxy.ThreadMap) -> (threadMap :Proxy.ThreadMap);
     makeEcho @1 (context :Proxy.Context) -> (result :Echo.Echo);
-    makeMining @2 (context :Proxy.Context) -> (result :Mining.Mining);
-    makeChain @3 (context :Proxy.Context) -> (result :Chain.Chain);
-    makeNode @4 (context :Proxy.Context) -> (result :Node.Node);
-    makeWalletLoader @5 (context :Proxy.Context, globalArgs :Common.GlobalArgs, chain :Chain.Chain) -> (result :Wallet.WalletLoader);
+    makeMining @3 (context :Proxy.Context) -> (result :Mining.Mining);
+    makeChain @4 (context :Proxy.Context) -> (result :Chain.Chain);
+    makeNode @5 (context :Proxy.Context) -> (result :Node.Node);
+    makeWalletLoader @6 (context :Proxy.Context, globalArgs :Common.GlobalArgs, chain :Chain.Chain) -> (result :Wallet.WalletLoader);
+    makeTracing @7 (context :Proxy.Context) -> (result :Tracing.Tracing);
+
+    # DEPRECATED: no longer supported; server returns an error.
+    makeMiningOld2 @2 () -> ();
 }

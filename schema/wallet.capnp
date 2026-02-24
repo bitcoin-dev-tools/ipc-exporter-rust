@@ -41,7 +41,7 @@ interface Wallet $Proxy.wrap("interfaces::Wallet") {
     unlockCoin @22 (context :Proxy.Context, output :Data) -> (result :Bool);
     isLockedCoin @23 (context :Proxy.Context, output :Data) -> (result :Bool);
     listLockedCoins @24 (context :Proxy.Context) -> (outputs :List(Data));
-    createTransaction @25 (context :Proxy.Context, recipients :List(Recipient), coinControl :CoinControl, sign :Bool, changePos :Int32) -> (changePos :Int32, fee :Int64, result :Common.Result(Data));
+    createTransaction @25 (context :Proxy.Context, recipients :List(Recipient), coinControl :CoinControl, sign :Bool, hasChangePos :Bool, changePos :UInt32) -> (result :Common.Result(CreatedTransactionResult));
     commitTransaction @26 (context :Proxy.Context, tx :Data, valueMap :List(Common.Pair(Text, Text)), orderForm :List(Common.Pair(Text, Text))) -> ();
     transactionCanBeAbandoned @27 (context :Proxy.Context, txid :Data) -> (result :Bool);
     abandonTransaction @28 (context :Proxy.Context, txid :Data) -> (result :Bool);
@@ -238,6 +238,13 @@ struct WalletBalances $Proxy.wrap("interfaces::WalletBalances") {
     balance @0 :Int64;
     unconfirmedBalance @1 :Int64 $Proxy.name("unconfirmed_balance");
     immatureBalance @2 :Int64 $Proxy.name("immature_balance");
+}
+
+struct CreatedTransactionResult $Proxy.wrap("wallet::CreatedTransactionResult") {
+    tx @0 :Data;
+    fee @1 :Int64;
+    feeCalc @2 :Chain.FeeCalculation $Proxy.name("fee_calc");
+    changePos @3 :UInt32 $Proxy.name("change_pos");
 }
 
 struct WalletMigrationResult $Proxy.wrap("interfaces::WalletMigrationResult") {

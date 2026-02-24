@@ -10,7 +10,7 @@ Bitcoin Core must be built with multiprocess support (the `bitcoin-node` binary 
 
 Single binary that does three things concurrently:
 
-1. **IPC subscription** — subscribes to `ChainNotifications` via Cap'n Proto RPC. Callbacks fire in real-time for block/mempool/flush events and update atomic counters.
+1. **IPC subscriptions** — subscribes to `ChainNotifications` and `UtxoCacheTrace` via Cap'n Proto RPC. Callbacks fire in real-time for block/mempool/flush/UTXO cache events and update atomic counters.
 2. **Polling loop** — queries `Chain` and `Node` interfaces every 60 seconds for gauges (height, mempool stats, peer count, bandwidth). Initial poll runs at startup.
 3. **HTTP server** — raw `TcpListener` on `127.0.0.1:9332` (configurable) serving Prometheus text format. No HTTP framework — just reads one request and writes the response.
 
@@ -22,17 +22,17 @@ Single binary that does three things concurrently:
 | `src/rpc.rs` | `RpcInterface` — IPC handshake and all Cap'n Proto RPC query methods. |
 | `src/metrics.rs` | `Metrics` struct (atomic counters/gauges) and `format_metrics()` Prometheus formatter. |
 | `src/server.rs` | `serve_metrics()` — TCP listener serving the Prometheus text endpoint. |
-| `src/notifications.rs` | `NotificationHandler` — `ChainNotifications` callback impl that updates metrics. |
+| `src/notifications.rs` | `NotificationHandler` and `UtxoCacheHandler` — callback impls that update metrics. |
 
 All metrics live in a `Metrics` struct using stdlib atomics (`AtomicU64`, `AtomicI32`, `AtomicBool`, etc.), shared via `Arc`. The `f64` verification_progress is stored as bits in an `AtomicU64`.
 
-The IPC handshake sequence: `Init.construct()` → `ThreadMap.makeThread()` → `Init.makeChain()` / `Init.makeNode()`. Every RPC call requires passing a `thread` context.
+The IPC handshake sequence: `Init.construct()` → `ThreadMap.makeThread()` → `Init.makeChain()` / `Init.makeNode()` / `Init.makeTracing()`. Every RPC call requires passing a `thread` context.
 
 ## Cap'n Proto Schemas
 
 Located in `schema/`, sourced from Bitcoin Core's multiprocess branch. `build.rs` compiles them into Rust code at build time via `capnpc`. The generated modules are included with `include!(concat!(env!("OUT_DIR"), "/<name>_capnp.rs"))`.
 
-Schemas: chain, common, echo, handler, init, mining, node, wallet, mp/proxy. Not all are actively used — chain, node, handler, init, and proxy are the ones the exporter calls.
+Schemas: chain, common, echo, handler, init, mining, node, tracing, wallet, mp/proxy. Not all are actively used — chain, node, handler, init, tracing, and proxy are the ones the exporter calls.
 
 ## CLI
 
@@ -50,8 +50,9 @@ Without `--debug`, only info-level messages (startup/shutdown) are logged to std
 
 See `METRICS.md` for the full reference. Summary:
 
-- 6 callback counters (blocks connected/disconnected, mempool tx add/remove, tip updates, flushes)
-- 1 callback gauge (block_height from block_connected)
+- 6 chain callback counters (blocks connected/disconnected, mempool tx add/remove, tip updates, flushes)
+- 1 chain callback gauge (block_height from block_connected)
+- 6 UTXO cache trace counters (add/spend/uncache counts and cumulative values)
 - 7 polled gauges (chain_height, ibd, verification_progress, mempool_size/bytes/max, peers)
 - 2 polled counters (bytes_recv, bytes_sent)
 
