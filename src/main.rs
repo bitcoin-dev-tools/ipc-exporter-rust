@@ -181,6 +181,10 @@ async fn main() -> anyhow::Result<()> {
                     std::process::exit(1);
                 });
             }
+            s if s.starts_with("--") => {
+                eprintln!("unknown flag: {s}");
+                std::process::exit(1);
+            }
             _ => socket_path = Some(arg),
         }
     }
