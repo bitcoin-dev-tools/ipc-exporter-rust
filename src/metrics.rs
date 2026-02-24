@@ -1,4 +1,6 @@
 use std::fmt::Write;
+// Relaxed ordering is sufficient: each field is an independent counter/gauge with no
+// cross-field invariants, so we only need atomicity, not inter-thread ordering guarantees.
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU64, Ordering::Relaxed};
 use std::sync::Arc;
 
