@@ -55,7 +55,7 @@ pub(crate) mod proxy_capnp {
 }
 
 async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> anyhow::Result<()> {
-    let h = rpc.get_height().await?;
+    let header_height = rpc.get_header_tip().await?;
     let ibd = rpc.is_ibd().await?;
     let progress = rpc.get_verification_progress().await?;
     let mempool_size = rpc.get_mempool_size().await?;
@@ -65,7 +65,9 @@ async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> anyhow::Result<(
     let bytes_recv = rpc.get_total_bytes_recv().await?;
     let bytes_sent = rpc.get_total_bytes_sent().await?;
 
-    metrics.chain_height.store(h, Relaxed);
+    if let Some(h) = header_height {
+        metrics.header_height.store(h, Relaxed);
+    }
     metrics.ibd.store(ibd, Relaxed);
     metrics.verification_progress.store(progress.to_bits(), Relaxed);
     metrics.mempool_size.store(mempool_size, Relaxed);
@@ -75,7 +77,7 @@ async fn poll_metrics(rpc: &RpcInterface, metrics: &Metrics) -> anyhow::Result<(
     metrics.bytes_recv.store(bytes_recv, Relaxed);
     metrics.bytes_sent.store(bytes_sent, Relaxed);
 
-    debug!("poll: chain_height={h} ibd={ibd} verification_progress={progress:.6}");
+    debug!("poll: header_height={header_height:?} ibd={ibd} verification_progress={progress:.6}");
     debug!("poll: block_height={}", metrics.block_height.load(Relaxed));
     debug!("poll: mempool_size={mempool_size} mempool_bytes={mempool_bytes} mempool_max={mempool_max}");
     debug!("poll: peers={peers} bytes_recv={bytes_recv} bytes_sent={bytes_sent}");
@@ -124,8 +126,8 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
 
     poll_metrics(&rpc, &metrics).await?;
     info!(
-        "chain height: {}, IBD: {}",
-        metrics.chain_height.load(Relaxed),
+        "header height: {}, IBD: {}",
+        metrics.header_height.load(Relaxed),
         metrics.ibd.load(Relaxed)
     );
 

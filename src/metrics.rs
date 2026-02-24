@@ -10,7 +10,7 @@ pub struct Metrics {
     pub tip_updates: AtomicU64,
     pub chain_state_flushes: AtomicU64,
     pub block_height: AtomicI32,
-    pub chain_height: AtomicI32,
+    pub header_height: AtomicI32,
     pub ibd: AtomicBool,
     pub verification_progress: AtomicU64,
     pub mempool_size: AtomicU64,
@@ -37,7 +37,7 @@ impl Metrics {
             tip_updates: AtomicU64::new(0),
             chain_state_flushes: AtomicU64::new(0),
             block_height: AtomicI32::new(-1),
-            chain_height: AtomicI32::new(-1),
+            header_height: AtomicI32::new(-1),
             ibd: AtomicBool::new(false),
             verification_progress: AtomicU64::new(0),
             mempool_size: AtomicU64::new(0),
@@ -75,7 +75,7 @@ pub fn format_metrics(m: &Metrics) -> String {
     counter!("bitcoin_tip_updates_total", m.tip_updates.load(Relaxed));
     counter!("bitcoin_chain_state_flushes_total", m.chain_state_flushes.load(Relaxed));
     gauge!("bitcoin_block_height", m.block_height.load(Relaxed));
-    gauge!("bitcoin_chain_height", m.chain_height.load(Relaxed));
+    gauge!("bitcoin_header_height", m.header_height.load(Relaxed));
     gauge!("bitcoin_ibd", m.ibd.load(Relaxed) as u8);
     gauge!("bitcoin_verification_progress", f64::from_bits(m.verification_progress.load(Relaxed)));
     gauge!("bitcoin_mempool_size", m.mempool_size.load(Relaxed));

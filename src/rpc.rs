@@ -68,13 +68,6 @@ impl RpcInterface {
         })
     }
 
-    pub async fn get_height(&self) -> Result<i32> {
-        let mut req = self.chain.get_height_request();
-        req.get().get_context()?.set_thread(self.thread.clone());
-        let response = req.send().promise.await.context("get_height")?;
-        Ok(response.get()?.get_result())
-    }
-
     pub async fn is_ibd(&self) -> Result<bool> {
         let mut req = self.chain.is_initial_block_download_request();
         req.get().get_context()?.set_thread(self.thread.clone());
@@ -147,6 +140,18 @@ impl RpcInterface {
         req.get().get_context()?.set_thread(self.thread.clone());
         let response = req.send().promise.await.context("get_total_bytes_recv")?;
         Ok(response.get()?.get_result())
+    }
+
+    pub async fn get_header_tip(&self) -> Result<Option<i32>> {
+        let mut req = self.node.get_header_tip_request();
+        req.get().get_context()?.set_thread(self.thread.clone());
+        let response = req.send().promise.await.context("get_header_tip")?;
+        let result = response.get()?;
+        if result.get_result() {
+            Ok(Some(result.get_height()))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn get_total_bytes_sent(&self) -> Result<i64> {
