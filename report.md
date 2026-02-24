@@ -268,6 +268,43 @@ The lock is held for the **entire duration of all IPC round-trips** to all subsc
 
 For a metrics exporter that subscribes to UtxoCacheTrace, the overhead during IBD or reindex — where blocks are connected continuously — is substantial. USDT imposes no cost when no consumer is attached and minimal, non-blocking cost when one is.
 
+## Overhead on the Exporter
+
+The previous section examined IPC callback costs from Bitcoin Core's perspective. This section examines the cost on the subscriber (exporter) side.
+
+### The Problem
+
+During IBD, the exporter's capnp-rpc event loop consumes significant CPU — observed at ~40% of a vCPU on a 2-vCPU droplet — processing UtxoCacheTrace callbacks. Each callback requires:
+
+1. Socket read of the incoming Cap'n Proto message
+2. Segment table parsing and message framing
+3. RPC capability dispatch (message ID lookup, method resolution)
+4. Handler invocation (a single `AtomicU64::fetch_add` — trivially cheap)
+5. Empty response message construction and serialization
+6. Socket write of the response back to Bitcoin Core
+
+Steps 1-3 and 5-6 are pure protocol overhead. The actual work in step 4 is negligible. The CPU cost is dominated by per-message IPC machinery.
+
+### Volume During IBD
+
+During IBD, blocks are connected continuously. Each block generates roughly one UTXO cache `add` per transaction output and one `spend` per transaction input. A typical block with ~2,000 transactions and ~2-3 inputs/outputs each produces ~5,000-10,000 UTXO cache events. At IBD rates of multiple blocks per second, the exporter processes tens of thousands of Cap'n Proto RPC round-trips per second.
+
+### Mempool Notifications Compound the Issue
+
+`transactionAddedToMempool` and `transactionRemovedFromMempool` both send the full serialized transaction as `tx :Data`. The exporter receives and buffers the entire message through the capnp-rpc system, even though it only increments a counter — the transaction bytes are unused outside `--debug` mode. On a node with active mempool churn, this adds continuous overhead from processing messages that are mostly discarded.
+
+### Contrast with a USDT/BPF Consumer
+
+A BPF program attached to the equivalent `utxocache:add` tracepoint runs in kernel space. It reads the tracepoint arguments directly from registers, increments a counter in a BPF map, and returns. There is no serialization, no socket I/O, no response message, and no protocol overhead. Per-event cost is nanoseconds, not microseconds. The aggregated counters are read periodically from userspace with near-zero cost.
+
+This is why the same per-UTXO metrics work effortlessly over USDT but consume significant CPU over IPC: the BPF execution model is fundamentally cheaper for high-frequency, low-payload event aggregation.
+
+### Implication
+
+IPC callbacks are well-suited for lower-frequency, higher-value events: block connected, tip updated, chain state flushed. These fire at most once per block (~every 10 minutes when synced) and the per-message overhead is irrelevant.
+
+For per-UTXO granularity (~10,000 events per block), the Cap'n Proto RPC protocol overhead dominates. The exporter spends almost all of its CPU on IPC machinery rather than useful work. USDT tracepoints remain the better tool for this class of high-frequency event aggregation.
+
 ## Trade-offs
 
 | Consideration | USDT | IPC |
