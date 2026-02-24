@@ -118,19 +118,25 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
         .await?;
     info!("registered for chain notifications");
 
-    let utxo_trace = rpc
-        .register_utxo_cache_trace(UtxoCacheHandler {
-            metrics: metrics.clone(),
-        })
-        .await?;
-    info!("registered for UTXO cache trace");
-
     poll_metrics(&rpc, &metrics).await?;
     info!(
         "header height: {}, IBD: {}",
         metrics.header_height.load(Relaxed),
         metrics.ibd.load(Relaxed)
     );
+
+    let mut utxo_trace = if metrics.ibd.load(Relaxed) {
+        info!("deferring UTXO cache trace until IBD completes");
+        None
+    } else {
+        let handler = rpc
+            .register_utxo_cache_trace(UtxoCacheHandler {
+                metrics: metrics.clone(),
+            })
+            .await?;
+        info!("registered for UTXO cache trace");
+        Some(handler)
+    };
 
     let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let ctrl_c = tokio::signal::ctrl_c();
@@ -140,6 +146,15 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(60)) => {
                 poll_metrics(&rpc, &metrics).await?;
+                if utxo_trace.is_none() && !metrics.ibd.load(Relaxed) {
+                    let handler = rpc
+                        .register_utxo_cache_trace(UtxoCacheHandler {
+                            metrics: metrics.clone(),
+                        })
+                        .await?;
+                    info!("IBD complete, registered for UTXO cache trace");
+                    utxo_trace = Some(handler);
+                }
             }
             _ = &mut ctrl_c => {
                 info!("received SIGINT, shutting down...");
@@ -158,9 +173,11 @@ async fn run(stream: tokio::net::UnixStream, metrics_addr: String) -> anyhow::Re
     req.get().get_context()?.set_thread(rpc.thread.clone());
     req.send().promise.await?;
 
-    let mut req = utxo_trace.disconnect_request();
-    req.get().get_context()?.set_thread(rpc.thread.clone());
-    req.send().promise.await?;
+    if let Some(utxo_trace) = utxo_trace {
+        let mut req = utxo_trace.disconnect_request();
+        req.get().get_context()?.set_thread(rpc.thread.clone());
+        req.send().promise.await?;
+    }
 
     info!("notifications disconnected");
 

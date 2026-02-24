@@ -10,7 +10,7 @@ Bitcoin Core must be built with multiprocess support (the `bitcoin-node` binary 
 
 Single binary that does three things concurrently:
 
-1. **IPC subscriptions** — subscribes to `ChainNotifications` and `UtxoCacheTrace` via Cap'n Proto RPC. Callbacks fire in real-time for block/mempool/flush/UTXO cache events and update atomic counters.
+1. **IPC subscriptions** — subscribes to `ChainNotifications` and `UtxoCacheTrace` via Cap'n Proto RPC. Callbacks fire in real-time for block/mempool/flush/UTXO cache events and update atomic counters. The `UtxoCacheTrace` subscription is deferred during IBD to avoid excessive RPC overhead; it is registered automatically once the poll loop detects IBD has completed.
 2. **Polling loop** — queries `Chain` and `Node` interfaces every 60 seconds for gauges (height, mempool stats, peer count, bandwidth). Initial poll runs at startup.
 3. **HTTP server** — raw `TcpListener` on `127.0.0.1:9332` (configurable) serving Prometheus text format. No HTTP framework — just reads one request and writes the response.
 
